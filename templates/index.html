@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+
+{% if user %}
 <div class="card">
-    {% if user %}
     <h2>欢迎回来，{{ user.username }}！</h2>
     <div class="user-info">
         <h3>用户信息</h3>
@@ -14,10 +15,55 @@
         </ul>
     </div>
     <a href="/logout" class="btn btn-danger">退出登录</a>
-    {% else %}
+</div>
+
+<!-- 搜索功能 -->
+<div class="card">
+    <h3>搜索用户</h3>
+    <form method="GET" action="/search" class="search-form">
+        <div class="search-box">
+            <input type="text" name="keyword" class="search-input" placeholder="输入用户名或邮箱搜索..." value="{{ search_keyword or '' }}" required>
+            <button type="submit" class="btn btn-search">搜索</button>
+        </div>
+    </form>
+
+    {% if search_keyword %}
+    <div class="search-results">
+        {% if search_results %}
+        <p class="result-count">共找到 {{ search_results|length }} 条结果</p>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>邮箱</th>
+                    <th>手机</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in search_results %}
+                <tr>
+                    <td>{{ row.id }}</td>
+                    <td>{{ row.username }}</td>
+                    <td>{{ row.email }}</td>
+                    <td>{{ row.phone }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-result">无搜索结果</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+{% else %}
+<div class="card">
     <h2>请先登录</h2>
     <p>您尚未登录，请先登录系统。</p>
     <a href="/login" class="btn btn-primary">前往登录</a>
-    {% endif %}
 </div>
+{% endif %}
+
 {% endblock %}

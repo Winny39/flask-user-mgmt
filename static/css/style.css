@@ -202,3 +202,122 @@ p {
     margin-bottom: 16px;
     color: #666;
 }
+
+/* ===== Success Message ===== */
+.success-message {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+/* ===== Search ===== */
+.search-form {
+    margin-bottom: 16px;
+}
+
+.search-box {
+    display: flex;
+    gap: 8px;
+}
+
+.search-input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.btn-search {
+    background: #667eea;
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+
+.btn-search:hover {
+    background: #5a6fd6;
+}
+
+.result-count {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 12px;
+}
+
+.no-result {
+    text-align: center;
+    color: #999;
+    padding: 24px 0;
+    font-size: 14px;
+}
+
+/* ===== Data Table ===== */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.data-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.data-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 500;
+}
+
+.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #333;
+}
+
+.data-table tbody tr:hover {
+    background: #f8f9ff;
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ===== Register Card ===== */
+.register-card {
+    max-width: 440px;
+    margin: 0 auto;
+}
+
+.register-card p a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+.register-card p a:hover {
+    text-decoration: underline;
+}
+
+/* ===== Responsive ===== */
+@media (min-width: 768px) {
+    .container.has-search {
+        max-width: 900px;
+    }
+}

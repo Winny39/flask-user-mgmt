@@ -2,6 +2,7 @@ import os
 import base64
 import time
 import random
+import sqlite3
 from flask import Flask, render_template, request, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
@@ -25,6 +26,32 @@ USERS = {
     "admin": {"username": "admin", "password": generate_password_hash("admin123"), "role": "admin", "email": "admin@example.com", "phone": "13800138000", "balance": 99999},
     "alice": {"username": "alice", "password": generate_password_hash("alice2025"), "role": "user", "email": "alice@example.com", "phone": "13900139001", "balance": 100},
 }
+
+
+# ==================== SQLite 初始化 ====================
+
+def init_db():
+    """初始化 SQLite 数据库，创建 users 表并插入默认用户"""
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect("data/users.db")
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            email TEXT,
+            phone TEXT
+        )
+    """)
+    # 插入默认用户（INSERT OR IGNORE 防止重复）
+    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)",
+              ("admin", "admin123", "admin@example.com", "13800138000"))
+    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)",
+              ("alice", "alice2025", "alice@example.com", "13900139001"))
+    conn.commit()
+    conn.close()
+    print("[初始化] SQLite 数据库已就绪 (data/users.db)")
 
 
 def get_safe_user_info(username):
@@ -129,6 +156,59 @@ def login():
     return render_template("login.html", **ctx)
 
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+
+        if not username or not password:
+            return render_template("register.html", error="用户名和密码不能为空")
+
+        # 使用 f-string 字符串拼接插入数据库（存在 SQL 注入漏洞）
+        conn = sqlite3.connect("data/users.db")
+        c = conn.cursor()
+        sql = f"INSERT INTO users (username, password, email, phone) VALUES ('{username}', '{password}', '{email}', '{phone}')"
+        print(f"[注册 SQL] {sql}")
+        try:
+            c.execute(sql)
+            conn.commit()
+            conn.close()
+            return render_template("login.html", success="注册成功，请登录")
+        except Exception as e:
+            conn.close()
+            return render_template("register.html", error=f"注册失败：{str(e)}")
+
+    return render_template("register.html")
+
+
+@app.route("/search")
+def search():
+    keyword = request.args.get("keyword", "").strip()
+    results = []
+
+    if keyword:
+        # 使用 f-string 字符串拼接查询（存在 SQL 注入漏洞）
+        conn = sqlite3.connect("data/users.db")
+        c = conn.cursor()
+        sql = f"SELECT id, username, email, phone FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
+        print(f"[搜索 SQL] {sql}")
+        try:
+            c.execute(sql)
+            rows = c.fetchall()
+            results = [{"id": r[0], "username": r[1], "email": r[2], "phone": r[3]} for r in rows]
+        except Exception as e:
+            print(f"[搜索错误] {e}")
+        finally:
+            conn.close()
+
+    username = session.get("username")
+    return render_template("index.html", user=get_safe_user_info(username) if username and username in USERS else None,
+                         search_keyword=keyword, search_results=results)
+
+
 @app.route("/logout")
 def logout():
     session.clear()
@@ -136,4 +216,5 @@ def logout():
 
 
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)
