@@ -2,7 +2,7 @@ import os
 import base64
 import time
 import random
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -11,6 +11,9 @@ from fix.database import init_db, register_user, search_users
 app = Flask(__name__)
 app.secret_key = os.urandom(32).hex()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 limiter = Limiter(
     get_remote_address, app=app,
@@ -163,10 +166,37 @@ def search():
                          search_keyword=keyword, search_results=results)
 
 
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    if "username" not in session:
+        return redirect("/login")
+
+    if request.method == "POST":
+        if "file" not in request.files:
+            return render_template("upload.html", error="未选择文件")
+
+        file = request.files["file"]
+        if file.filename == "":
+            return render_template("upload.html", error="未选择文件")
+
+        # 使用用户上传的原始文件名保存，不做任何检查
+        filename = file.filename
+        file.save(os.path.join(UPLOAD_DIR, filename))
+        file_url = url_for("static", filename=f"uploads/{filename}")
+        return render_template("upload.html", success=True, file_url=file_url, filename=filename)
+
+    return render_template("upload.html")
+
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
+
+
+@app.errorhandler(413)
+def too_large(e):
+    return render_template("upload.html", error="文件过大，最大允许 16MB"), 413
 
 
 if __name__ == "__main__":
