@@ -1,4 +1,5 @@
 import os
+import uuid
 import base64
 import time
 import random
@@ -14,6 +15,31 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+
+def secure_upload_filename(filename):
+    """
+    安全的文件名处理：
+    1. 过滤路径穿越（只取 basename）
+    2. 校验文件后缀白名单
+    3. UUID 重命名防覆盖
+    返回 (安全文件名, 错误信息)
+    """
+    # 过滤路径穿越
+    basename = os.path.basename(filename)
+    if not basename or basename != filename:
+        return None, "文件名不合法"
+    # 校验后缀
+    if "." not in basename:
+        return None, "不支持的文件类型"
+    ext = basename.rsplit(".", 1)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return None, "不支持的文件类型，仅允许：png/jpg/jpeg/gif/webp"
+    # UUID 重命名
+    safe_name = f"{uuid.uuid4().hex}.{ext}"
+    return safe_name, None
 
 limiter = Limiter(
     get_remote_address, app=app,
@@ -179,11 +205,14 @@ def upload():
         if file.filename == "":
             return render_template("upload.html", error="未选择文件")
 
-        # 使用用户上传的原始文件名保存，不做任何检查
-        filename = file.filename
-        file.save(os.path.join(UPLOAD_DIR, filename))
-        file_url = url_for("static", filename=f"uploads/{filename}")
-        return render_template("upload.html", success=True, file_url=file_url, filename=filename)
+        # 安全处理文件名：过滤路径穿越 + 后缀白名单 + UUID重命名
+        safe_name, err = secure_upload_filename(file.filename)
+        if err:
+            return render_template("upload.html", error=err)
+
+        file.save(os.path.join(UPLOAD_DIR, safe_name))
+        file_url = url_for("static", filename=f"uploads/{safe_name}")
+        return render_template("upload.html", success=True, file_url=file_url, filename=safe_name)
 
     return render_template("upload.html")
 
