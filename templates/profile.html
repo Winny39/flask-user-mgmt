@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card profile-card">
+    {% if user_data %}
+    <h2>个人中心</h2>
+
+    {% if msg %}
+    <div class="success-message">{{ msg }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="error-message">{{ error }}</div>
+    {% endif %}
+
+    <div class="user-info">
+        <ul class="info-list">
+            <li><span class="label">ID：</span><span class="value">{{ user_data.id }}</span></li>
+            <li><span class="label">用户名：</span><span class="value">{{ user_data.username }}</span></li>
+            <li><span class="label">邮箱：</span><span class="value">{{ user_data.email }}</span></li>
+            <li><span class="label">手机：</span><span class="value">{{ user_data.phone }}</span></li>
+            <li><span class="label">余额：</span><span class="value">¥ {{ user_data.balance }}</span></li>
+        </ul>
+    </div>
+
+    <div class="recharge-section">
+        <h3>充值</h3>
+        <form method="POST" action="/recharge">
+            <input type="hidden" name="user_id" value="{{ user_data.id }}">
+            <div class="form-group">
+                <label for="amount">充值金额</label>
+                <input type="number" id="amount" name="amount" placeholder="请输入金额" required>
+            </div>
+            <button type="submit" class="btn btn-primary">充 值</button>
+        </form>
+    </div>
+
+    <p class="back-link"><a href="/">← 返回首页</a></p>
+    {% else %}
+    {% if error %}
+    <div class="error-message">{{ error }}</div>
+    {% else %}
+    <h2>用户不存在</h2>
+    <p>请检查用户ID是否正确。</p>
+    {% endif %}
+    <p class="back-link"><a href="/">← 返回首页</a></p>
+    {% endif %}
+</div>
+{% endblock %}

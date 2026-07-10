@@ -412,3 +412,20 @@ p {
 .btn-upload:hover {
     background: #5a6fd6;
 }
+
+/* ===== Profile ===== */
+.profile-card {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.recharge-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.recharge-section h3 {
+    margin-bottom: 16px;
+    color: #667eea;
+}

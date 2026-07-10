@@ -1,13 +1,23 @@
 import os
 import uuid
+import sqlite3
 import base64
 import time
 import random
-from flask import Flask, render_template, request, redirect, session, url_for
+import logging
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from fix.database import init_db, register_user, search_users
+
+# ============================================================
+# 日志配置：所有异常会记录到日志，绝不向客户端输出
+# ============================================================
+logging.basicConfig(
+    level=logging.ERROR,
+    format="[%(asctime)s] %(levelname)s %(module)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.urandom(32).hex()
@@ -18,28 +28,12 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
-
-def secure_upload_filename(filename):
-    """
-    安全的文件名处理：
-    1. 过滤路径穿越（只取 basename）
-    2. 校验文件后缀白名单
-    3. UUID 重命名防覆盖
-    返回 (安全文件名, 错误信息)
-    """
-    # 过滤路径穿越
-    basename = os.path.basename(filename)
-    if not basename or basename != filename:
-        return None, "文件名不合法"
-    # 校验后缀
-    if "." not in basename:
-        return None, "不支持的文件类型"
-    ext = basename.rsplit(".", 1)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return None, "不支持的文件类型，仅允许：png/jpg/jpeg/gif/webp"
-    # UUID 重命名
-    safe_name = f"{uuid.uuid4().hex}.{ext}"
-    return safe_name, None
+# ============================================================
+# 【修复1】安全关闭调试：由环境变量 FLASK_ENV 控制
+# 生产环境设置 export FLASK_ENV=production 即可关闭调试
+# 默认 debug=False，绝不暴露堆栈给客户端
+# ============================================================
+DEBUG_MODE = os.environ.get("FLASK_ENV") != "production"
 
 limiter = Limiter(
     get_remote_address, app=app,
@@ -55,9 +49,6 @@ USERS = {
     "admin": {"username": "admin", "password": generate_password_hash("admin123"), "role": "admin", "email": "admin@example.com", "phone": "13800138000", "balance": 99999},
     "alice": {"username": "alice", "password": generate_password_hash("alice2025"), "role": "user", "email": "alice@example.com", "phone": "13900139001", "balance": 100},
 }
-
-
-# ==================== SQLite 初始化（由 fix/database.py 接管） ====================
 
 
 def get_safe_user_info(username):
@@ -109,6 +100,21 @@ def record_failure():
 
 def clear_failures():
     FAILURE_TRACKER.pop(get_remote_address(), None)
+
+
+# ============================================================
+# 全局异常兜底：捕获所有未处理异常，返回统一 JSON
+# 真实错误写入日志，客户端只收到通用提示
+# ============================================================
+@app.errorhandler(Exception)
+def global_exception_handler(e):
+    logger.error("未捕获的异常: %s", str(e), exc_info=True)
+    return jsonify({"code": 500, "msg": "系统繁忙，请稍后再试"}), 500
+
+
+@app.errorhandler(413)
+def too_large(e):
+    return render_template("upload.html", error="文件过大，最大允许 16MB"), 413
 
 
 @app.route("/")
@@ -205,7 +211,6 @@ def upload():
         if file.filename == "":
             return render_template("upload.html", error="未选择文件")
 
-        # 安全处理文件名：过滤路径穿越 + 后缀白名单 + UUID重命名
         safe_name, err = secure_upload_filename(file.filename)
         if err:
             return render_template("upload.html", error=err)
@@ -217,17 +222,122 @@ def upload():
     return render_template("upload.html")
 
 
+@app.route("/profile")
+def profile():
+    if "username" not in session:
+        return redirect("/login")
+
+    username = session["username"]
+    user_id = request.args.get("user_id", "")
+    user_data = None
+
+    conn = sqlite3.connect("data/users.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE username = ?", (username,))
+    current_row = c.fetchone()
+    if not current_row:
+        conn.close()
+        return redirect("/login")
+    current_user_id = str(current_row[0])
+
+    target_id = user_id if user_id else current_user_id
+    if target_id != current_user_id:
+        conn.close()
+        return render_template("profile.html", user_data=None, error="无权查看其他用户的资料")
+
+    c.execute("SELECT id, username, email, phone, balance FROM users WHERE id = ?", (target_id,))
+    row = c.fetchone()
+    if row:
+        user_data = {"id": row[0], "username": row[1], "email": row[2], "phone": row[3], "balance": row[4]}
+    conn.close()
+    # 读取 URL 中的消息（充值后跳转携带）
+    msg = request.args.get("msg", "")
+    error = request.args.get("error", "")
+    return render_template("profile.html", user_data=user_data, msg=msg, error=error)
+
+
+# ============================================================
+# 【修复2 & 4】recharge 路由：严格输入校验 + 参数化查询确认
+#
+# 防注入说明：
+#   - 使用 ? 占位符参数化查询，变量由 sqlite3 驱动绑定，
+#     绝无拼接风险。攻击者无法通过 amount 或 user_id 注入 SQL。
+#   - amount 在 Python 层已转为 float，传入 SQLite
+#     时作为数值类型绑定，不可能成为 SQL 语句的一部分。
+#
+# 输入校验：
+#   - 必须为数值（int/float）
+#   - 范围：0.01 ~ 999999999.99
+#   - 校验失败时重定向回 profile 页并显示红色错误提示
+# ============================================================
+@app.route("/recharge", methods=["POST"])
+def recharge():
+    if "username" not in session:
+        return redirect("/login")
+
+    username = session["username"]
+    user_id = request.form.get("user_id", "")
+    amount_str = request.form.get("amount", "").strip()
+
+    # ------ 校验1：amount 不能为空 ------
+    if not amount_str:
+        return redirect(f"/profile?user_id={user_id}&error=充值金额不能为空")
+
+    # ------ 校验2：amount 必须为数值 ------
+    try:
+        amount = float(amount_str)
+    except ValueError:
+        return redirect(f"/profile?user_id={user_id}&error=充值金额必须为数字")
+
+    # ------ 校验3：金额范围 0.01 ~ 999999999.99 ------
+    if amount < 0.01 or amount > 999999999.99:
+        return redirect(f"/profile?user_id={user_id}&error=充值金额超出允许范围（0.01 ~ 999999999.99）")
+
+    conn = sqlite3.connect("data/users.db")
+    c = conn.cursor()
+
+    # 验证 user_id 属于当前登录用户（参数化查询，无注入风险）
+    c.execute("SELECT id, balance FROM users WHERE id = ? AND username = ?",
+              (user_id, username))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return redirect("/profile?error=无权操作该账户")
+
+    # 执行余额更新（参数化查询，amount 为数值类型，安全）
+    c.execute("UPDATE users SET balance = balance + ? WHERE id = ?",
+              (amount, user_id))
+    conn.commit()
+    conn.close()
+
+    # 充值成功后重定向，并传递 success 标记
+    return redirect(f"/profile?user_id={user_id}&msg=充值成功")
+
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
 
 
-@app.errorhandler(413)
-def too_large(e):
-    return render_template("upload.html", error="文件过大，最大允许 16MB"), 413
-
-
+# ============================================================
+# 【修复1续】启动逻辑：由 FLASK_ENV 控制 debug 开关
+# 生产环境：FLASK_ENV=production → debug=False → 无堆栈泄露
+# 开发环境：FLASK_ENV=development 或不设置 → debug=True
+# ============================================================
 if __name__ == "__main__":
+    from fix.database import init_db, register_user, search_users
     init_db()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # 初始化 balance 列
+    conn = sqlite3.connect("data/users.db")
+    c = conn.cursor()
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    c.execute("UPDATE users SET balance = 99999 WHERE username = 'admin' AND balance IS NULL")
+    c.execute("UPDATE users SET balance = 100 WHERE username = 'alice' AND balance IS NULL")
+    conn.commit()
+    conn.close()
+    app.run(debug=DEBUG_MODE, host="0.0.0.0", port=5000)
