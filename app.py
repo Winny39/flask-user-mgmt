@@ -321,15 +321,26 @@ def page():
 
     if name:
         pages_dir = os.path.join(app.root_path, "pages")
-        # 直接拼接用户输入的 name，不做任何路径校验或 ../ 过滤
-        filepath = os.path.join(pages_dir, name)
-        if not os.path.isfile(filepath):
-            filepath = os.path.join(pages_dir, name + ".html")
-        if os.path.isfile(filepath):
+
+        # 【修复】路径规范化，防止 ../ 穿越到 pages/ 目录之外
+        raw_path = os.path.join(pages_dir, name)
+        filepath = os.path.normpath(raw_path)
+        norm_pages = os.path.normpath(pages_dir)
+
+        # 检查规范化后的路径是否仍在 pages/ 目录下
+        if not filepath.startswith(norm_pages + os.sep) and filepath != norm_pages:
+            page_content = "<p style='color:#999;text-align:center;padding:40px 0;'>页面不存在</p>"
+        elif not os.path.isfile(filepath):
+            # 尝试添加 .html 后缀
+            filepath2 = os.path.normpath(raw_path + ".html")
+            if filepath2.startswith(norm_pages + os.sep) and os.path.isfile(filepath2):
+                with open(filepath2, "r", encoding="utf-8") as f:
+                    page_content = f.read()
+            else:
+                page_content = "<p style='color:#999;text-align:center;padding:40px 0;'>页面不存在</p>"
+        else:
             with open(filepath, "r", encoding="utf-8") as f:
                 page_content = f.read()
-        else:
-            page_content = "<p style='color:#999;text-align:center;padding:40px 0;'>页面不存在</p>"
 
     username = session.get("username")
     return render_template("index.html",

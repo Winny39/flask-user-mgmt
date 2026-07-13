@@ -3,6 +3,7 @@
 
 {% if page_content %}
 <div class="card page-content-card">
+    {# safe过滤器安全：path traversal已被修复，仅pages/目录内的文件可渲染 #}
     {{ page_content | safe }}
     <p class="back-link"><a href="/">← 返回首页</a></p>
 </div>
