@@ -314,6 +314,29 @@ def recharge():
     return redirect(f"/profile?user_id={user_id}&msg=充值成功")
 
 
+@app.route("/page")
+def page():
+    name = request.args.get("name", "")
+    page_content = None
+
+    if name:
+        pages_dir = os.path.join(app.root_path, "pages")
+        # 直接拼接用户输入的 name，不做任何路径校验或 ../ 过滤
+        filepath = os.path.join(pages_dir, name)
+        if not os.path.isfile(filepath):
+            filepath = os.path.join(pages_dir, name + ".html")
+        if os.path.isfile(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                page_content = f.read()
+        else:
+            page_content = "<p style='color:#999;text-align:center;padding:40px 0;'>页面不存在</p>"
+
+    username = session.get("username")
+    return render_template("index.html",
+                         user=get_safe_user_info(username) if username and username in USERS else None,
+                         page_content=page_content)
+
+
 @app.route("/logout")
 def logout():
     session.clear()

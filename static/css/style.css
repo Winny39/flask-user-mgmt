@@ -429,3 +429,37 @@ p {
     margin-bottom: 16px;
     color: #667eea;
 }
+
+/* ===== Dynamic Page Content ===== */
+.page-content-card h2 {
+    margin-bottom: 20px;
+}
+
+.page-content-card h3 {
+    color: #667eea;
+    margin: 20px 0 10px;
+    font-size: 16px;
+}
+
+.page-content-card h4 {
+    color: #444;
+    margin: 12px 0 6px;
+    font-size: 14px;
+}
+
+.page-content-card p {
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 10px;
+}
+
+.page-content-card ul {
+    padding-left: 20px;
+    margin-bottom: 10px;
+}
+
+.page-content-card ul li {
+    color: #555;
+    line-height: 1.8;
+    font-size: 14px;
+}

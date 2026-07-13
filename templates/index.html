@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 
+{% if page_content %}
+<div class="card page-content-card">
+    {{ page_content | safe }}
+    <p class="back-link"><a href="/">← 返回首页</a></p>
+</div>
+{% endif %}
+
 {% if user %}
 <div class="card">
     <h2>欢迎回来，{{ user.username }}！</h2>
@@ -17,6 +24,7 @@
     <div class="action-links">
         <a href="/profile" class="btn btn-upload">个人中心</a>
         <a href="/upload" class="btn btn-upload">上传头像</a>
+        <a href="/page?name=help" class="btn btn-upload">帮助中心</a>
         <a href="/logout" class="btn btn-danger">退出登录</a>
     </div>
 </div>
