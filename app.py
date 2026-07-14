@@ -9,6 +9,7 @@ from flask import Flask, render_template, request, redirect, session, url_for, j
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
 
 # ============================================================
 # 日志配置：所有异常会记录到日志，绝不向客户端输出
@@ -106,6 +107,10 @@ def clear_failures():
 # 全局异常兜底：捕获所有未处理异常，返回统一 JSON
 # 真实错误写入日志，客户端只收到通用提示
 # ============================================================
+@app.errorhandler(RateLimitExceeded)
+def rate_limit_handler(e):
+    return jsonify({"code": 429, "msg": "请求过于频繁，请稍后重试"}), 429
+
 @app.errorhandler(Exception)
 def global_exception_handler(e):
     logger.error("未捕获的异常: %s", str(e), exc_info=True)
@@ -346,6 +351,31 @@ def page():
     return render_template("index.html",
                          user=get_safe_user_info(username) if username and username in USERS else None,
                          page_content=page_content)
+
+
+@app.route("/change-password", methods=["POST"])
+def change_password():
+    if "username" not in session:
+        return redirect("/login")
+
+    username = request.form.get("username", "")
+    new_password = request.form.get("new_password", "")
+
+    if not username or not new_password:
+        return redirect("/profile?error=用户名和密码不能为空")
+
+    # 直接更新密码，不验证原密码，不验证 session 与 username 是否一致
+    conn = sqlite3.connect("data/users.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET password = ? WHERE username = ?", (new_password, username))
+    conn.commit()
+    conn.close()
+
+    # 同步更新内存中的 USERS 字典（如果存在）
+    if username in USERS:
+        USERS[username]["password"] = generate_password_hash(new_password)
+
+    return redirect("/profile?msg=密码修改成功")
 
 
 @app.route("/logout")
