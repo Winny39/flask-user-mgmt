@@ -1,17 +1,36 @@
 {% extends "base.html" %}
 {% block head_extra %}
 <script>
-function validatePassword() {
-    var pwd = document.getElementById('new_password').value;
-    var confirm = document.getElementById('confirm_password').value;
-    if (pwd !== confirm) {
+const ENCRYPT_KEY = "{{ encrypt_key_b64 }}";
+
+function xorEncrypt(plaintext, keyB64) {
+    const key = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
+    const data = new TextEncoder().encode(plaintext);
+    const encrypted = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+        encrypted[i] = data[i] ^ key[i % key.length];
+    }
+    let binary = '';
+    encrypted.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary);
+}
+
+function encryptAndSubmit() {
+    var oldPwd = document.getElementById('old_password').value;
+    var newPwd = document.getElementById('new_password').value;
+    var confirmPwd = document.getElementById('confirm_password').value;
+
+    if (newPwd !== confirmPwd) {
         alert('两次输入的密码不一致');
         return false;
     }
-    if (pwd.length < 6) {
+    if (newPwd.length < 6) {
         alert('密码长度不能少于6位');
         return false;
     }
+
+    document.getElementById('old_password').value = xorEncrypt(oldPwd, ENCRYPT_KEY);
+    document.getElementById('new_password').value = xorEncrypt(newPwd, ENCRYPT_KEY);
     return true;
 }
 </script>
@@ -52,8 +71,12 @@ function validatePassword() {
 
     <div class="recharge-section">
         <h3>修改密码</h3>
-        <form method="POST" action="/change-password" onsubmit="return validatePassword()">
-            <input type="hidden" name="username" value="{{ user_data.username }}">
+        <form method="POST" action="/change-password" onsubmit="return encryptAndSubmit()">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-group">
+                <label for="old_password">原密码</label>
+                <input type="password" id="old_password" name="old_password" placeholder="请输入原密码" required>
+            </div>
             <div class="form-group">
                 <label for="new_password">新密码</label>
                 <input type="password" id="new_password" name="new_password" placeholder="请输入新密码" required>

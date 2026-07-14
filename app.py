@@ -258,7 +258,15 @@ def profile():
     # 读取 URL 中的消息（充值后跳转携带）
     msg = request.args.get("msg", "")
     error = request.args.get("error", "")
-    return render_template("profile.html", user_data=user_data, msg=msg, error=error)
+
+    # 生成 CSRF Token 和加密密钥
+    csrf_token = base64.b64encode(os.urandom(32)).decode()
+    session["csrf_token"] = csrf_token
+    encrypt_key = base64.b64encode(os.urandom(32)).decode()
+    session["change_pwd_key"] = encrypt_key
+
+    return render_template("profile.html", user_data=user_data, msg=msg, error=error,
+                         csrf_token=csrf_token, encrypt_key_b64=encrypt_key)
 
 
 # ============================================================
@@ -358,22 +366,48 @@ def change_password():
     if "username" not in session:
         return redirect("/login")
 
-    username = request.form.get("username", "")
-    new_password = request.form.get("new_password", "")
+    # 【修复1】CSRF Token 校验
+    token = request.form.get("csrf_token", "")
+    if not token or token != session.pop("csrf_token", None):
+        return redirect("/profile?error=页面已过期，请刷新后重试")
 
-    if not username or not new_password:
-        return redirect("/profile?error=用户名和密码不能为空")
+    # 【修复2】只能修改自己的密码（从 session 取 username）
+    session_username = session["username"]
+    old_password_enc = request.form.get("old_password", "")
+    new_password_enc = request.form.get("new_password", "")
 
-    # 直接更新密码，不验证原密码，不验证 session 与 username 是否一致
+    if not old_password_enc or not new_password_enc:
+        return redirect("/profile?error=密码不能为空")
+
+    # 【修复3】解密新旧密码（XOR 解密，与登录加密方式一致）
+    key_b64 = session.pop("change_pwd_key", None)
+    if not key_b64:
+        return redirect("/profile?error=页面已过期，请刷新后重试")
+
+    old_password = xor_decrypt(old_password_enc, base64.b64decode(key_b64))
+    new_password = xor_decrypt(new_password_enc, base64.b64decode(key_b64))
+
+    if old_password is None or new_password is None:
+        return redirect("/profile?error=数据传输异常，请重试")
+
+    if len(new_password) < 6:
+        return redirect("/profile?error=密码长度不能少于6位")
+
+    # 【修复4】验证原密码（从 USERS 字典或数据库中验证）
+    user = USERS.get(session_username)
+    if not user or not check_password_hash(user["password"], old_password):
+        return redirect("/profile?error=原密码错误")
+
+    # 更新数据库（参数化查询，无注入风险）
     conn = sqlite3.connect("data/users.db")
     c = conn.cursor()
-    c.execute("UPDATE users SET password = ? WHERE username = ?", (new_password, username))
+    hashed = generate_password_hash(new_password)
+    c.execute("UPDATE users SET password = ? WHERE username = ?", (hashed, session_username))
     conn.commit()
     conn.close()
 
-    # 同步更新内存中的 USERS 字典（如果存在）
-    if username in USERS:
-        USERS[username]["password"] = generate_password_hash(new_password)
+    # 同步更新内存字典
+    USERS[session_username]["password"] = hashed
 
     return redirect("/profile?msg=密码修改成功")
 
