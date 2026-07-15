@@ -5,6 +5,8 @@ import base64
 import time
 import random
 import logging
+import urllib.request
+import urllib.error
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
@@ -359,6 +361,49 @@ def page():
     return render_template("index.html",
                          user=get_safe_user_info(username) if username and username in USERS else None,
                          page_content=page_content)
+
+
+@app.route("/fetch-url", methods=["POST"])
+def fetch_url():
+    if "username" not in session:
+        return redirect("/login")
+
+    target_url = request.form.get("url", "").strip()
+    if not target_url:
+        return render_template("index.html",
+                             user=get_safe_user_info(session["username"]) if session["username"] in USERS else None,
+                             fetch_result="请输入 URL")
+
+    # 直接访问用户提交的 URL，不限制协议、不检查内网、不做任何过滤
+    result = f"请求 URL: {target_url}\n"
+    try:
+        req = urllib.request.Request(target_url, headers={"User-Agent": "Mozilla/5.0"})
+        resp = urllib.request.urlopen(req, timeout=10)
+        result += f"状态码: {resp.status}\n"
+        content = resp.read()
+        # 解码尝试
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content.decode("utf-8", errors="replace")
+        result += f"响应内容 (前5000字符):\n{text[:5000]}"
+        resp.close()
+    except urllib.error.HTTPError as e:
+        result += f"HTTP 错误: {e.code} {e.reason}\n"
+        try:
+            text = e.read().decode("utf-8", errors="replace")
+            result += f"错误响应内容 (前2000字符):\n{text[:2000]}"
+        except Exception:
+            pass
+    except urllib.error.URLError as e:
+        result += f"URL 错误: {str(e.reason)}"
+    except Exception as e:
+        result += f"请求异常: {str(e)}"
+
+    username = session.get("username")
+    return render_template("index.html",
+                         user=get_safe_user_info(username) if username and username in USERS else None,
+                         fetch_result=result, fetch_url=target_url)
 
 
 @app.route("/change-password", methods=["POST"])
