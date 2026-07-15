@@ -7,6 +7,9 @@ import random
 import logging
 import urllib.request
 import urllib.error
+import urllib.parse
+import socket
+import ipaddress
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_limiter import Limiter
@@ -369,19 +372,50 @@ def fetch_url():
         return redirect("/login")
 
     target_url = request.form.get("url", "").strip()
-    if not target_url:
-        return render_template("index.html",
-                             user=get_safe_user_info(session["username"]) if session["username"] in USERS else None,
-                             fetch_result="请输入 URL")
+    username = session["username"]
+    user = get_safe_user_info(username) if username in USERS else None
 
-    # 直接访问用户提交的 URL，不限制协议、不检查内网、不做任何过滤
+    if not target_url:
+        return render_template("index.html", user=user, fetch_result="请输入 URL")
+
+    # 【修复1】协议白名单：仅允许 http/https
+    if not target_url.startswith(("http://", "https://")):
+        return render_template("index.html", user=user,
+                             fetch_result="不支持的协议，仅允许 http:// 和 https://",
+                             fetch_url=target_url)
+
+    # 【修复2】解析 URL 并检查目标 IP 是否为内网地址
+    try:
+        parsed = urllib.parse.urlparse(target_url)
+        hostname = parsed.hostname
+        if not hostname:
+            return render_template("index.html", user=user,
+                                 fetch_result="无效的 URL", fetch_url=target_url)
+
+        # 域名解析
+        host_ip = socket.gethostbyname(hostname)
+    except Exception:
+        return render_template("index.html", user=user,
+                             fetch_result="无法解析域名地址", fetch_url=target_url)
+
+    # 【修复3】检查是否为内网/私有/回环地址
+    try:
+        ip_obj = ipaddress.ip_address(host_ip)
+        if not ip_obj.is_global:
+            return render_template("index.html", user=user,
+                                 fetch_result="不允许访问内网地址或回环地址",
+                                 fetch_url=target_url)
+    except ValueError:
+        return render_template("index.html", user=user,
+                             fetch_result="无效的 IP 地址", fetch_url=target_url)
+
+    # 安全校验通过，发起请求
     result = f"请求 URL: {target_url}\n"
     try:
         req = urllib.request.Request(target_url, headers={"User-Agent": "Mozilla/5.0"})
         resp = urllib.request.urlopen(req, timeout=10)
         result += f"状态码: {resp.status}\n"
         content = resp.read()
-        # 解码尝试
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError:
@@ -400,10 +434,7 @@ def fetch_url():
     except Exception as e:
         result += f"请求异常: {str(e)}"
 
-    username = session.get("username")
-    return render_template("index.html",
-                         user=get_safe_user_info(username) if username and username in USERS else None,
-                         fetch_result=result, fetch_url=target_url)
+    return render_template("index.html", user=user, fetch_result=result, fetch_url=target_url)
 
 
 @app.route("/change-password", methods=["POST"])
