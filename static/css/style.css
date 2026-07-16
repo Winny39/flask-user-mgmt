@@ -488,3 +488,33 @@ p {
     word-break: break-all;
     color: #333;
 }
+
+/* ===== Ping Console ===== */
+.ping-card {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.ping-output-wrapper {
+    margin-top: 20px;
+}
+
+.ping-output-wrapper h3 {
+    margin-bottom: 10px;
+    color: #444;
+}
+
+.ping-output {
+    background: #1a1a2e;
+    color: #00ff88;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    font-family: "Courier New", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}

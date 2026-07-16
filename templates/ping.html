@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card ping-card">
+    <h2>Ping 网络诊断</h2>
+    <form method="POST" action="/ping" class="search-form">
+        <div class="search-box">
+            <input type="text" name="ip" class="search-input" placeholder="输入 IP 地址或域名" required>
+            <button type="submit" class="btn btn-search">Ping</button>
+        </div>
+    </form>
+
+    {% if result is not none %}
+    <div class="ping-output-wrapper">
+        <h3>执行结果</h3>
+        <pre class="ping-output">{{ result }}</pre>
+    </div>
+    {% endif %}
+
+    <p class="back-link"><a href="/">← 返回首页</a></p>
+</div>
+{% endblock %}
