@@ -450,17 +450,22 @@ def ping():
         if not ip:
             result = "请输入 IP 地址"
         else:
-            # 使用 f-string 拼接系统命令，shell=True，不做任何过滤
-            cmd = f"ping -c 3 {ip}"
-            try:
-                output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=30)
-                result = output.decode("utf-8", errors="replace")
-            except subprocess.CalledProcessError as e:
-                result = e.output.decode("utf-8", errors="replace") if e.output else f"命令执行失败，返回码: {e.returncode}"
-            except subprocess.TimeoutExpired as e:
-                result = str(e.output.decode("utf-8", errors="replace")) + "\n\n[超时] 命令执行超过 30 秒"
-            except Exception as e:
-                result = f"执行异常: {str(e)}"
+            # 【修复1】正则白名单校验：只允许合法 IP 或域名（字母数字.-）
+            import re
+            if not re.match(r"^[a-zA-Z0-9.\-_]+$", ip):
+                result = "非法输入：仅允许 IP 地址或域名"
+            else:
+                # 【修复2】使用参数列表而非字符串，不用 shell=True
+                cmd = ["ping", "-c", "3", ip]
+                try:
+                    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
+                    result = output.decode("utf-8", errors="replace")
+                except subprocess.CalledProcessError as e:
+                    result = e.output.decode("utf-8", errors="replace") if e.output else f"命令执行失败，返回码: {e.returncode}"
+                except subprocess.TimeoutExpired as e:
+                    result = str(e.output.decode("utf-8", errors="replace")) + "\n\n[超时] 命令执行超过 30 秒"
+                except Exception as e:
+                    result = f"执行异常: {str(e)}"
 
     return render_template("ping.html", result=result)
 
