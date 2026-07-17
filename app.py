@@ -488,18 +488,39 @@ def xml_import():
                 processed_xml = xml_input
                 file_contents = {}
 
-                # 检测 XML 中的 <!ENTITY 和 SYSTEM 定义
+                # 【修复】检测 XML 中的 <!ENTITY 和 SYSTEM 定义
                 # 提取实体名称和文件路径
                 entity_pattern = re.compile(r'<!ENTITY\s+(\S+)\s+SYSTEM\s+"([^"]+)"\s*>')
                 for match in entity_pattern.finditer(processed_xml):
                     entity_name = match.group(1)
                     file_path = match.group(2)
-                    # 读取本地文件内容
+
+                    # 【修复1】路径规范化 + 白名单校验：只允许 pages/ 目录
+                    pages_dir = os.path.normpath(os.path.join(app.root_path, "pages"))
+                    # 相对路径基于 pages_dir 解析，绝对路径直接用
+                    if os.path.isabs(file_path):
+                        abs_path = os.path.normpath(os.path.abspath(file_path))
+                    else:
+                        abs_path = os.path.normpath(os.path.join(pages_dir, file_path))
+                    if not abs_path.startswith(pages_dir + os.sep) and abs_path != pages_dir:
+                        file_contents[entity_name] = ""
+                        continue
+
+                    # 【修复2】限制读取文件大小（最大 100KB）
                     try:
-                        with open(file_path, "r", encoding="utf-8") as f:
+                        if os.path.getsize(abs_path) > 1024 * 100:
+                            file_contents[entity_name] = ""
+                            continue
+                    except OSError:
+                        file_contents[entity_name] = ""
+                        continue
+
+                    # 安全读取文件内容
+                    try:
+                        with open(abs_path, "r", encoding="utf-8") as f:
                             file_contents[entity_name] = f.read()
-                    except Exception as e:
-                        file_contents[entity_name] = f"[读取失败: {str(e)}]"
+                    except Exception:
+                        file_contents[entity_name] = ""
 
                 # 将实体引用 &xxe; 替换为文件内容
                 for ename, econtent in file_contents.items():
@@ -521,8 +542,8 @@ def xml_import():
 
                 result = json.dumps({"users": users, "file_contents": file_contents}, ensure_ascii=False, indent=2)
 
-            except Exception as e:
-                result = json.dumps({"error": str(e)}, ensure_ascii=False, indent=2)
+            except Exception:
+                result = json.dumps({"error": "XML 解析失败，请检查数据格式"}, ensure_ascii=False, indent=2)
 
     return render_template("xml_import.html", result=result, xml_input=xml_input)
 
