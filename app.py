@@ -1,4 +1,6 @@
 import os
+import re
+import json
 import uuid
 import sqlite3
 import base64
@@ -468,6 +470,61 @@ def ping():
                     result = f"执行异常: {str(e)}"
 
     return render_template("ping.html", result=result)
+
+
+@app.route("/xml-import", methods=["GET", "POST"])
+def xml_import():
+    if "username" not in session:
+        return redirect("/login")
+
+    result = None
+    xml_input = ""
+    if request.method == "POST":
+        xml_input = request.form.get("xml_data", "")
+        if not xml_input.strip():
+            result = "请输入 XML 数据"
+        else:
+            try:
+                processed_xml = xml_input
+                file_contents = {}
+
+                # 检测 XML 中的 <!ENTITY 和 SYSTEM 定义
+                # 提取实体名称和文件路径
+                entity_pattern = re.compile(r'<!ENTITY\s+(\S+)\s+SYSTEM\s+"([^"]+)"\s*>')
+                for match in entity_pattern.finditer(processed_xml):
+                    entity_name = match.group(1)
+                    file_path = match.group(2)
+                    # 读取本地文件内容
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            file_contents[entity_name] = f.read()
+                    except Exception as e:
+                        file_contents[entity_name] = f"[读取失败: {str(e)}]"
+
+                # 将实体引用 &xxe; 替换为文件内容
+                for ename, econtent in file_contents.items():
+                    processed_xml = processed_xml.replace(f"&{ename};", econtent)
+
+                # 移除 DOCTYPE 声明（避免解析器实际执行 XXE）
+                processed_xml = re.sub(r'<!DOCTYPE\s+\S+\s*\[.*?\]\s*>', '', processed_xml, flags=re.DOTALL)
+                # 移除单独的 ENTITY 声明
+                processed_xml = re.sub(r'<!ENTITY\s+\S+\s+SYSTEM\s+"[^"]+"\s*>', '', processed_xml)
+
+                # 解析替换后的 XML，提取 user 节点的 name 和 email
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(processed_xml)
+                users = []
+                for user_elem in root.findall(".//user"):
+                    name = user_elem.findtext("name", "")
+                    email = user_elem.findtext("email", "")
+                    users.append({"name": name, "email": email})
+
+                result = json.dumps({"users": users, "file_contents": file_contents}, ensure_ascii=False, indent=2)
+
+            except Exception as e:
+                result = json.dumps({"error": str(e)}, ensure_ascii=False, indent=2)
+
+    return render_template("xml_import.html", result=result, xml_input=xml_input)
 
 
 @app.route("/change-password", methods=["POST"])

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card xml-card">
+    <h2>XML 数据导入</h2>
+    <form method="POST" action="/xml-import">
+        <div class="form-group">
+            <label for="xml_data">输入 XML 数据</label>
+            <textarea id="xml_data" name="xml_data" class="xml-textarea" placeholder="请输入 XML 数据..." rows="12">{{ xml_input }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">导入</button>
+    </form>
+
+    {% if result is not none %}
+    <div class="xml-result-wrapper">
+        <h3>解析结果</h3>
+        <pre class="xml-result">{{ result }}</pre>
+    </div>
+    {% endif %}
+
+    <p class="back-link"><a href="/">← 返回首页</a></p>
+</div>
+{% endblock %}
